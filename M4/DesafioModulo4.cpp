@@ -24,7 +24,6 @@ public:
     glm::vec2 size; 
     GLfloat rotate; 
 
-    // Construtor
     Sprite(const char *texturePath, glm::vec2 pos, glm::vec2 sz, GLfloat rot = 0.0f)
         : position(pos), size(sz), rotate(rot), textureID(0)
     {
