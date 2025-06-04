@@ -1,11 +1,3 @@
-// -----------------------------------------------------------------------------
-// INÍCIO DO ARQUIVO: INCLUDES E CONFIGURAÇÕES GERAIS
-// -----------------------------------------------------------------------------
-// Inclui bibliotecas padrão, OpenGL, GLFW e GLM para gráficos e matemática.
-// Define constantes globais para o tamanho da janela, grade e tolerância de cor.
-// Define struct Quad para representar cada célula da grade.
-// Variáveis globais controlam o estado do jogo e recursos OpenGL.
-// -----------------------------------------------------------------------------
 
 
 #include <iostream>
