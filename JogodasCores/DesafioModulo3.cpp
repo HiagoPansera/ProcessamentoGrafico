@@ -5,10 +5,9 @@
 #include <ctime>
 #include <sstream>
 
-#include <glad/glad.h>     // Carrega as funções do OpenGL 3.3+
-#include <GLFW/glfw3.h>    // Criação de janela e captura de eventos
+#include <glad/glad.h>     
+#include <GLFW/glfw3.h>    
 
-// GLM para matriz ortográfica e transformações de vértices
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -16,68 +15,42 @@
 using namespace std;
 using namespace glm;
 
-// -----------------------------------------------------------------------------
-// Configurações da janela e da grade
-// -----------------------------------------------------------------------------
-const GLuint WIDTH    = 800;   // Largura da janela em pixels (fixa)
-const GLuint HEIGHT   = 600;   // Altura da janela em pixels (fixa)
-const GLuint ROWS     = 6;     // Número de linhas de quads na grade
-const GLuint COLS     = 8;     // Número de colunas de quads na grade
-const GLuint QUAD_W   = 100;   // Largura (pixels) de cada retângulo
-const GLuint QUAD_H   = 100;   // Altura  (pixels) de cada retângulo
+const GLuint WIDTH    = 800;
+const GLuint HEIGHT   = 600;
+const GLuint ROWS     = 6;
+const GLuint COLS     = 8;
+const GLuint QUAD_W   = 100;
+const GLuint QUAD_H   = 100;
 
-// Distância máxima no espaço RGB (√( (1-0)^2 + (1-0)^2 + (1-0)^2 )) = √3
-// Usaremos para normalizar a distância Euclidiana no cálculo de similaridade.
 const float dMax = sqrt(3.0f);
 
-// Tolerância normalizada (0..1). Se (distância Euclidiana / dMax) ≤ 0.2, consideramos “similar”
-// e eliminamos o retângulo clicado e todos cujas cores estão dentro dessa faixa.
+
 const float COLOR_TOLERANCE = 0.2f;
 
-// -----------------------------------------------------------------------------
-// Aqui representamos cada triângulo da grade
-// -----------------------------------------------------------------------------
 struct Quad {
-    vec3 position;   // Posição em pixels do centro do retângulo
-    vec3 dimensions; // Dimensões do retângulo em pixels: (largura, altura, 1.0f)
-    vec3 color;      // Cor RGB normalizada em [0,1]
-    bool eliminated; // Se true, este retângulo não será desenhado (foi removido)
+    vec3 position;
+    vec3 dimensions;
+    vec3 color;
+    bool eliminated;
 };
 
-// Matriz fixa de ROWS × COLS de quads
 static Quad grid[ROWS][COLS];
 
-// -----------------------------------------------------------------------------
-// Estado do jogo
-// -----------------------------------------------------------------------------
-static int attempts   = 0;    // Número de tentativas válidas
-static int score      = 0;    // Pontuação acumulada
-static bool gameOver  = false;// Se true, não processamos mais cliques até reiniciar
+static int attempts   = 0;
+static int score      = 0;
+static bool gameOver  = false;
 
-// Índice linear (0..ROWS*COLS-1) do quad selecionado pelo clique.
-// -1 indica que não houve clique válido ou já foi processado.
 static int iSelected  = -1;
 
-// Ponteiro global para a janela GLFW, usado para atualizar o título a qualquer momento
 static GLFWwindow* gWindow = nullptr;
 
-// IDs OpenGL para o programa de shader e para o VAO (Vertex Array Object)
 static GLuint shaderID;
 static GLuint VAO;
 
-// Locais dos uniforms dentro do programa de shaders (obtidos após linkar o shader)
 static GLint uniColorLoc;
 static GLint uniModelLoc;
 static GLint uniProjectionLoc;
 
-// -----------------------------------------------------------------------------
-// Código-fonte dos Shaders GLSL (Opção B: cor por uniform)
-// -----------------------------------------------------------------------------
-
-// Vertex Shader (VS):
-// - Recebe atributo “vp” = posição do vértice em espaço local (quad unitário centrado na origem).
-// - Usa “projection” (mat4) e “model” (mat4) para transformar para clip-space.
-// - Não recebe cor como atributo; cor é enviada ao FS via uniform.
 const GLchar* vertexShaderSource = R"glsl(
 #version 400 core
 
@@ -93,9 +66,6 @@ void main()
 }
 )glsl";
 
-// Fragment Shader (FS):
-// - Usa uniform “fc” (vec4) como cor uniforme de todos os pixels do quad desenhado.
-// - Saída em “frg”.
 const GLchar* fragmentShaderSource = R"glsl(
 #version 400 core
 
@@ -109,67 +79,35 @@ void main()
 }
 )glsl";
 
-// -----------------------------------------------------------------------------
-// Protótipos de funções
-// -----------------------------------------------------------------------------
 
-// Callback de teclado: ESC fecha a janela; R reinicia o jogo.
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
-// Callback de clique do mouse: calcula índice da linha/coluna clicada e define iSelected.
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 
-// Cria, compila e linka os shaders; retorna ID do programa de shader.
 GLuint setupShader();
 
-// Cria VAO/VBO para um quad unitário (centrado na origem, coordenadas em NDC); retorna ID do VAO.
 GLuint createQuad();
 
-// Elimina todos os quads cuja cor esteja “próxima” da cor do quad em iSelected.
-// Retorna quantos quads foram eliminados nesta chamada.
 int eliminarSimilares(float toleranciaNormalized);
 
-// Verifica se ainda existe ao menos um quad não eliminado; retorna true se houver.
 bool anyActiveCell();
 
-// Atualiza título da janela com “Score”, “Tentativas” e, se gameOver, adiciona “— FIM DE JOGO! Aperte R para reiniciar.”
 void updateWindowTitle();
 
-// Reinicia o jogo:
-//  1) Zera attempts, score, gameOver e iSelected.
-//  2) Para cada célula na grade:
-//       - Define position = (j*QUAD_W + QUAD_W/2, i*QUAD_H + QUAD_H/2, 0) para posicionar no centro.
-//       - Define dimensions = (QUAD_W, QUAD_H, 1.0f).
-//       - Gera color aleatória em [0,1] para cada canal.
-//       - Marca eliminated = false.
-//  3) Chama updateWindowTitle() para mostrar “Score: 0 — Tentativas: 0”.
-// -----------------------------------------------------------------------------
 void resetGame();
 
-/// -----------------------------------------------------------------------------
-// FUNÇÃO PRINCIPAL: main()
-// -----------------------------------------------------------------------------
-// Responsável por inicializar a janela, OpenGL, shaders, grid do jogo e
-// executar o loop principal de renderização e eventos.
-// O loop principal processa cliques, elimina quads similares, atualiza score
-// e redesenha a tela até o usuário fechar a janela.
-// -----------------------------------------------------------------------------
 int main()
 {
-    // Inicializa semente aleatória para cores
     srand(static_cast<unsigned int>(time(nullptr)));
 
-    // 1) Inicializa GLFW
     if (!glfwInit())
     {
         cerr << "Falha ao inicializar GLFW\n";
         return -1;
     }
 
-    // 2) Impede redimensionamento da janela (800×600 fixos, encaixe perfeito na grade)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    // 3) Cria janela GLFW de WIDTH×HEIGHT pixels com título “Jogo das Cores”
     gWindow = glfwCreateWindow(WIDTH, HEIGHT, "Jogo das Cores", nullptr, nullptr);
     if (!gWindow)
     {
@@ -177,14 +115,11 @@ int main()
         glfwTerminate();
         return -1;
     }
-    // Define o contexto OpenGL desta janela como o atual
     glfwMakeContextCurrent(gWindow);
 
-    // 4) Registra callbacks de teclado e mouse
     glfwSetKeyCallback(gWindow, key_callback);
     glfwSetMouseButtonCallback(gWindow, mouse_button_callback);
 
-    // 5) Carrega carregador de funções OpenGL (GLAD)
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         cerr << "Falha ao inicializar GLAD\n";
@@ -192,27 +127,19 @@ int main()
         return -1;
     }
 
-    // 6) Define viewport para toda a janela
     int fbW, fbH;
     glfwGetFramebufferSize(gWindow, &fbW, &fbH);
     glViewport(0, 0, fbW, fbH);
 
-    // 7) Compila e linka shaders; guarda ID em shaderID
     shaderID = setupShader();
     glUseProgram(shaderID);
 
-    // 8) Cria VAO/VBO para um quad unitário (−0.5..+0.5 em NDC)
     VAO = createQuad();
 
-    // 9) Obtém locais de uniform no programa de shader:
-    //    - uniColorLoc: uniform vec4 fc
-    //    - uniModelLoc: uniform mat4 model
-    //    - uniProjectionLoc: uniform mat4 projection
     uniColorLoc      = glGetUniformLocation(shaderID, "fc");
     uniModelLoc      = glGetUniformLocation(shaderID, "model");
     uniProjectionLoc = glGetUniformLocation(shaderID, "projection");
 
-    // 10) Prepara matriz de projeção ortográfica (0..800,0..600 → topo-esquerdo como (0,0))
     glm::mat4 projection = glm::ortho(
         0.0f, float(WIDTH),
         float(HEIGHT), 0.0f,
@@ -220,22 +147,16 @@ int main()
     );
     glUniformMatrix4fv(uniProjectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    // 11) Inicializa grid e estado do jogo
     resetGame();
 
-    // 12) Loop principal de renderização e eventos
     while (!glfwWindowShouldClose(gWindow))
     {
-        // Processa eventos pendentes (teclado, mouse etc.)
         glfwPollEvents();
 
-        // Se houve clique válido (iSelected ≥ 0) e o jogo não acabou, processa eliminação
         if (iSelected >= 0 && !gameOver)
         {
-            // Elimina todos os quads similares e recebe quantos foram removidos
             int removedCount = eliminarSimilares(COLOR_TOLERANCE);
 
-            // Se removeu ≥ 1 quad, contabiliza como tentativa válida
             if (removedCount > 0)
             {
                 attempts++;                // incrementa tentativas
