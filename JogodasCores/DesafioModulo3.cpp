@@ -148,6 +148,7 @@ int main()
     glUniformMatrix4fv(uniProjectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     resetGame();
+    
 
     while (!glfwWindowShouldClose(gWindow))
     {
