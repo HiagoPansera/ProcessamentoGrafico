@@ -1,6 +1,6 @@
 # Atividade vivencial 14/06/2025
 <br>
-## Nome: Kevin de Azevedo Garcia; Hiago Pansera; Maurício Pereira da Costa
+Nomes: Kevin de Azevedo Garcia; Hiago Pansera; Maurício Pereira da Costa
 <br>
 </td>
 <td align="center">
